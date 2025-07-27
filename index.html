@@ -941,4 +941,284 @@
     function addSwipeListeners(messageElement) {
       const messageWrapper = messageElement.querySelector('.message-wrapper');
       
-      messageWrapper.addEventListener('touchstart', handle
+      messageWrapper.addEventListener('touchstart', handleTouchStart, { passive: false });
+      messageWrapper.addEventListener('touchmove', handleTouchMove, { passive: false });
+      messageWrapper.addEventListener('touchend', handleTouchEnd, { passive: false });
+      
+      // Also add click listener for desktop
+      messageWrapper.addEventListener('click', function(e) {
+        if (window.innerWidth > 768) {
+          const messageId = messageElement.dataset.messageId;
+          const messageText = messageElement.dataset.messageText;
+          const messageUser = messageElement.dataset.messageUser;
+          replyToMessage(messageId, messageText, messageUser);
+        }
+      });
+    }
+
+    // Touch start handler
+    function handleTouchStart(e) {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+      currentSwipeElement = e.currentTarget.parentElement;
+      isVerticalScroll = false;
+    }
+
+    // Touch move handler
+    function handleTouchMove(e) {
+      if (!currentSwipeElement) return;
+      
+      const touchX = e.touches[0].clientX;
+      const touchY = e.touches[0].clientY;
+      const deltaX = touchX - touchStartX;
+      const deltaY = touchY - touchStartY;
+      
+      // Check if it's a vertical scroll
+      if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
+        isVerticalScroll = true;
+        resetSwipe();
+        return;
+      }
+      
+      if (isVerticalScroll) return;
+      
+      // Prevent default only for horizontal swipes
+      if (Math.abs(deltaX) > 10) {
+        e.preventDefault();
+      }
+      
+      const isOwnMessage = currentSwipeElement.classList.contains('own');
+      const swipeDirection = isOwnMessage ? -deltaX : deltaX;
+      
+      if (swipeDirection > 0 && swipeDirection < 120) {
+        const wrapper = currentSwipeElement.querySelector('.message-wrapper');
+        const transform = isOwnMessage ? `translateX(-${swipeDirection}px)` : `translateX(${swipeDirection}px)`;
+        wrapper.style.transform = transform;
+        
+        if (swipeDirection > swipeThreshold) {
+          currentSwipeElement.classList.add('swiping');
+        } else {
+          currentSwipeElement.classList.remove('swiping');
+        }
+      }
+    }
+
+    // Touch end handler
+    function handleTouchEnd(e) {
+      if (!currentSwipeElement || isVerticalScroll) {
+        resetSwipe();
+        return;
+      }
+      
+      const touchX = e.changedTouches[0].clientX;
+      const deltaX = touchX - touchStartX;
+      const isOwnMessage = currentSwipeElement.classList.contains('own');
+      const swipeDirection = isOwnMessage ? -deltaX : deltaX;
+      
+      if (swipeDirection > swipeThreshold) {
+        // Add haptic feedback if available
+        if (navigator.vibrate) {
+          navigator.vibrate(50);
+        }
+      }
+      
+      resetSwipe();
+    }
+
+    // Reset swipe state
+    function resetSwipe() {
+      if (currentSwipeElement) {
+        const wrapper = currentSwipeElement.querySelector('.message-wrapper');
+        wrapper.style.transform = '';
+        currentSwipeElement.classList.remove('swiping');
+        currentSwipeElement = null;
+      }
+    }
+
+    // Update send button state
+    function updateSendButton() {
+      const sendBtn = document.getElementById("sendBtn");
+      const msgInput = document.getElementById("msg");
+      sendBtn.disabled = msgInput.value.trim() === "";
+    }
+
+    // Scroll to bottom
+    function scrollToBottom() {
+      setTimeout(() => {
+        const chatContainer = document.getElementById("chat");
+        chatContainer.scrollTo({
+          top: chatContainer.scrollHeight,
+          behavior: 'smooth'
+        });
+      }, 100);
+    }
+
+    // Toggle theme (placeholder function)
+    function toggleTheme() {
+      // This can be expanded to switch between light and dark themes
+      console.log('Theme toggle clicked');
+    }
+
+    // Listen for new messages
+    db.ref("messages").on("child_added", function(snapshot) {
+      const messageData = snapshot.val();
+      const messageId = snapshot.key;
+      
+      // Remove loading indicator on first message
+      if (!messagesLoaded) {
+        const loading = document.querySelector('.loading');
+        if (loading) loading.remove();
+        messagesLoaded = true;
+      }
+      
+      // Ensure message has required fields
+      if (!messageData.user) messageData.user = 'Unknown';
+      if (!messageData.timestamp) messageData.timestamp = Date.now();
+      
+      const messageElement = createMessageElement(messageData, messageId);
+      document.getElementById("chat").appendChild(messageElement);
+      
+      scrollToBottom();
+      
+      // Update message status to delivered after a short delay
+      setTimeout(() => {
+        if (messageData.user !== currentUser) {
+          db.ref(`messages/${messageId}/status`).set('delivered');
+        }
+      }, 1000);
+      
+      // Update to read status after another delay
+      setTimeout(() => {
+        if (messageData.user !== currentUser) {
+          db.ref(`messages/${messageId}/status`).set('read');
+        }
+      }, 3000);
+    });
+
+    // Listen for message deletions
+    db.ref("messages").on("child_removed", function(snapshot) {
+      const messageId = snapshot.key;
+      const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+      if (messageElement) {
+        messageElement.style.animation = 'messageSlideIn 0.3s ease-out reverse';
+        setTimeout(() => {
+          messageElement.remove();
+        }, 300);
+      }
+    });
+
+    // Listen for message updates (status changes)
+    db.ref("messages").on("child_changed", function(snapshot) {
+      const messageData = snapshot.val();
+      const messageId = snapshot.key;
+      const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+      
+      if (messageElement && messageData.user === currentUser) {
+        const statusElement = messageElement.querySelector('.message-status');
+        if (statusElement) {
+          statusElement.textContent = getStatusIcon(messageData.status);
+          statusElement.className = `message-status status-${messageData.status}`;
+        }
+      }
+    });
+
+    // Handle input changes
+    document.getElementById("msg").addEventListener("input", updateSendButton);
+
+    // Close modals when clicking outside
+    document.addEventListener('click', function(e) {
+      if (e.target.classList.contains('modal-overlay')) {
+        if (e.target.id === 'clearModal') {
+          hideClearModal();
+        } else if (e.target.id === 'deleteModal') {
+          hideDeleteModal();
+        }
+      }
+    });
+
+    // Initialize
+    updateSendButton();
+
+    // Handle window resize for responsive adjustments
+    window.addEventListener('resize', function() {
+      resetSwipe();
+    });
+
+    // Prevent zoom on double tap for iOS
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', function (event) {
+      const now = (new Date()).getTime();
+      if (now - lastTouchEnd <= 300) {
+        event.preventDefault();
+      }
+      lastTouchEnd = now;
+    }, false);
+
+    // Handle viewport height changes (mobile keyboard)
+    function handleViewportChange() {
+      const vh = window.innerHeight * 0.01;
+      document.documentElement.style.setProperty('--vh', `${vh}px`);
+    }
+
+    window.addEventListener('resize', handleViewportChange);
+    handleViewportChange();
+
+    // Auto-resize textarea
+    const msgInput = document.getElementById('msg');
+    msgInput.addEventListener('input', function() {
+      this.style.height = 'auto';
+      this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+      updateSendButton();
+    });
+
+    // Emoji support (you can expand this)
+    function insertEmoji(emoji) {
+      const msgInput = document.getElementById('msg');
+      const cursorPos = msgInput.selectionStart;
+      const textBefore = msgInput.value.substring(0, cursorPos);
+      const textAfter = msgInput.value.substring(cursorPos);
+      msgInput.value = textBefore + emoji + textAfter;
+      msgInput.selectionStart = msgInput.selectionEnd = cursorPos + emoji.length;
+      msgInput.focus();
+      updateSendButton();
+    }
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', function(e) {
+      // Ctrl/Cmd + Backspace to clear all messages
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Backspace') {
+        e.preventDefault();
+        showClearModal();
+      }
+      
+      // Escape to close modals or reply
+      if (e.key === 'Escape') {
+        if (document.getElementById('clearModal').classList.contains('show')) {
+          hideClearModal();
+        }
+        if (document.getElementById('deleteModal').classList.contains('show')) {
+          hideDeleteModal();
+        }
+        closeReply();
+      }
+    });
+
+    // Service Worker for offline support (optional enhancement)
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        // You can register a service worker here for offline support
+        console.log('Service Worker support detected');
+      });
+    }
+
+    // Add some fun animations for message reactions (placeholder)
+    function addReaction(messageId, reaction) {
+      // This can be expanded to add emoji reactions to messages
+      console.log(`Adding reaction ${reaction} to message ${messageId}`);
+    }
+
+    // Initialize app
+    console.log('WhatsApp-style chat initialized');
+  </script>
+</body>
+</html>
