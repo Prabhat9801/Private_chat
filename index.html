@@ -1,48 +1,334 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Private Chat</title>
   <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
     body {
-      font-family: Arial, sans-serif;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .chat-header {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      padding: 1rem;
       text-align: center;
-      background: #f0f0f0;
-      padding: 20px;
+      color: white;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
     }
+
+    .chat-header h2 {
+      font-size: 1.5rem;
+      font-weight: 600;
+    }
+
+    .user-selector {
+      margin-top: 0.5rem;
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+    }
+
+    .user-btn {
+      padding: 0.5rem 1rem;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-size: 0.9rem;
+    }
+
+    .user-btn.active {
+      background: rgba(255, 255, 255, 0.3);
+      border-color: rgba(255, 255, 255, 0.6);
+    }
+
+    .user-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .chat-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      max-width: 900px;
+      margin: 0 auto;
+      width: 100%;
+      padding: 1rem;
+      gap: 1rem;
+    }
+
     #chat {
-      width: 80%;
-      max-width: 600px;
-      height: 300px;
-      margin: auto;
-      overflow-y: scroll;
-      border: 1px solid #ccc;
-      background: white;
-      padding: 10px;
-      text-align: left;
+      flex: 1;
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 15px;
+      padding: 1rem;
+      overflow-y: auto;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
     }
-    input {
-      width: 60%;
-      padding: 10px;
-      margin-top: 10px;
+
+    .message {
+      margin-bottom: 1rem;
+      display: flex;
+      flex-direction: column;
+      animation: slideIn 0.3s ease-out;
     }
-    button {
-      padding: 10px 20px;
-      margin-left: 10px;
+
+    .message.own {
+      align-items: flex-end;
+    }
+
+    .message.other {
+      align-items: flex-start;
+    }
+
+    .message-bubble {
+      max-width: 70%;
+      padding: 0.75rem 1rem;
+      border-radius: 18px;
+      position: relative;
+      word-wrap: break-word;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .message.own .message-bubble {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+
+    .message.other .message-bubble {
+      background: #f1f3f4;
+      color: #333;
+      border-bottom-left-radius: 4px;
+    }
+
+    .message-bubble:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .message-info {
+      font-size: 0.7rem;
+      color: #666;
+      margin-top: 0.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .message.own .message-info {
+      justify-content: flex-end;
+    }
+
+    .reply-indicator {
+      font-size: 0.7rem;
+      opacity: 0.8;
+      margin-bottom: 0.25rem;
+      padding: 0.25rem 0.5rem;
+      background: rgba(0, 0, 0, 0.1);
+      border-radius: 8px;
+      border-left: 3px solid #667eea;
+    }
+
+    .input-container {
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 25px;
+      padding: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .reply-preview {
+      background: rgba(102, 126, 234, 0.1);
+      border-left: 3px solid #667eea;
+      padding: 0.5rem;
+      border-radius: 8px;
+      margin-bottom: 0.5rem;
+      font-size: 0.85rem;
+      color: #666;
+      display: none;
+    }
+
+    .reply-preview.show {
+      display: block;
+    }
+
+    .close-reply {
+      float: right;
+      cursor: pointer;
+      color: #999;
+      font-weight: bold;
+    }
+
+    #msg {
+      flex: 1;
+      border: none;
+      outline: none;
+      padding: 0.75rem;
+      font-size: 1rem;
+      border-radius: 20px;
+      background: transparent;
+    }
+
+    #msg::placeholder {
+      color: #999;
+    }
+
+    .send-btn {
+      width: 40px;
+      height: 40px;
+      border: none;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+      font-size: 1.2rem;
+    }
+
+    .send-btn:hover {
+      transform: scale(1.1);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .send-btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Responsive Design */
+    @media (max-width: 768px) {
+      .chat-container {
+        padding: 0.5rem;
+      }
+
+      .message-bubble {
+        max-width: 85%;
+      }
+
+      .chat-header h2 {
+        font-size: 1.3rem;
+      }
+
+      .user-selector {
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .user-btn {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.8rem;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .message-bubble {
+        max-width: 90%;
+        padding: 0.6rem 0.8rem;
+      }
+
+      .input-container {
+        padding: 0.5rem;
+      }
+
+      #msg {
+        padding: 0.6rem;
+        font-size: 0.9rem;
+      }
+
+      .send-btn {
+        width: 35px;
+        height: 35px;
+      }
+    }
+
+    /* Scrollbar Styling */
+    #chat::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    #chat::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    #chat::-webkit-scrollbar-thumb {
+      background: rgba(102, 126, 234, 0.3);
+      border-radius: 3px;
+    }
+
+    #chat::-webkit-scrollbar-thumb:hover {
+      background: rgba(102, 126, 234, 0.5);
     }
   </style>
 </head>
 <body>
-  <h2>Private Chat 💬</h2>
-  <div id="chat"></div>
-  <input type="text" id="msg" placeholder="Type a message">
-  <button onclick="send()">Send</button>
+  <div class="chat-header">
+    <h2>Private Chat 💬</h2>
+    <div class="user-selector">
+      <button class="user-btn active" onclick="setUser('User1')">User 1</button>
+      <button class="user-btn" onclick="setUser('User2')">User 2</button>
+    </div>
+  </div>
+
+  <div class="chat-container">
+    <div id="chat"></div>
+    
+    <div class="input-container">
+      <div class="reply-preview" id="replyPreview">
+        <span class="close-reply" onclick="closeReply()">&times;</span>
+        <div id="replyText"></div>
+      </div>
+      <input type="text" id="msg" placeholder="Type a message..." autocomplete="off">
+      <button class="send-btn" onclick="send()" id="sendBtn">
+        ➤
+      </button>
+    </div>
+  </div>
 
   <!-- Firebase Scripts -->
-  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
-
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.6.10/firebase-app-compat.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.6.10/firebase-database-compat.min.js"></script>
+  
   <script>
-    // ✅ Your Firebase Config
+    // Firebase Config
     const firebaseConfig = {
       apiKey: "AIzaSyAyo4u6FZfDlxKRqW-OFQ3uAzXOnkwAWxY",
       authDomain: "private-c6ca2.firebaseapp.com",
@@ -53,27 +339,133 @@
       appId: "1:746132871410:web:f5394eba6a084b2df7d86b"
     };
 
-    // ✅ Initialize Firebase
+    // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // ✅ Send message
+    // Global variables
+    let currentUser = 'User1';
+    let replyingTo = null;
+
+    // Set current user
+    function setUser(user) {
+      currentUser = user;
+      document.querySelectorAll('.user-btn').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      event.target.classList.add('active');
+    }
+
+    // Send message function
     function send() {
-      const msg = document.getElementById("msg").value.trim();
+      const msgInput = document.getElementById("msg");
+      const msg = msgInput.value.trim();
+      
       if (msg) {
-        db.ref("messages").push({ text: msg });
-        document.getElementById("msg").value = "";
+        const messageData = {
+          text: msg,
+          user: currentUser,
+          timestamp: Date.now(),
+          replyTo: replyingTo
+        };
+        
+        db.ref("messages").push(messageData);
+        msgInput.value = "";
+        closeReply();
       }
     }
 
-    // ✅ Receive messages in real-time
-    db.ref("messages").on("child_added", function(snapshot) {
-      const msg = snapshot.val().text;
-      const p = document.createElement("p");
-      p.textContent = msg;
-      document.getElementById("chat").appendChild(p);
-      document.getElementById("chat").scrollTop = document.getElementById("chat").scrollHeight;
+    // Handle Enter key press
+    document.getElementById("msg").addEventListener("keypress", function(event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        send();
+      }
     });
+
+    // Reply to message
+    function replyToMessage(messageId, messageText, messageUser) {
+      replyingTo = messageId;
+      const replyPreview = document.getElementById("replyPreview");
+      const replyText = document.getElementById("replyText");
+      
+      replyText.innerHTML = `<strong>Replying to ${messageUser}:</strong> ${messageText.substring(0, 50)}${messageText.length > 50 ? '...' : ''}`;
+      replyPreview.classList.add("show");
+      
+      document.getElementById("msg").focus();
+    }
+
+    // Close reply
+    function closeReply() {
+      replyingTo = null;
+      document.getElementById("replyPreview").classList.remove("show");
+    }
+
+    // Format timestamp
+    function formatTime(timestamp) {
+      const date = new Date(timestamp);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    // Create message element
+    function createMessageElement(messageData, messageId) {
+      const messageDiv = document.createElement("div");
+      messageDiv.className = `message ${messageData.user === currentUser ? 'own' : 'other'}`;
+      
+      let replyHtml = '';
+      if (messageData.replyTo) {
+        // Find the original message
+        const originalMessage = document.querySelector(`[data-message-id="${messageData.replyTo}"]`);
+        if (originalMessage) {
+          const originalText = originalMessage.querySelector('.message-bubble').textContent;
+          const originalUser = originalMessage.dataset.messageUser;
+          replyHtml = `<div class="reply-indicator">↳ Replying to ${originalUser}: ${originalText.substring(0, 30)}${originalText.length > 30 ? '...' : ''}</div>`;
+        }
+      }
+      
+      messageDiv.innerHTML = `
+        ${replyHtml}
+        <div class="message-bubble" onclick="replyToMessage('${messageId}', '${messageData.text.replace(/'/g, "\\'")}', '${messageData.user}')">
+          ${messageData.text}
+        </div>
+        <div class="message-info">
+          <span>${messageData.user}</span>
+          <span>•</span>
+          <span>${formatTime(messageData.timestamp)}</span>
+        </div>
+      `;
+      
+      messageDiv.dataset.messageId = messageId;
+      messageDiv.dataset.messageUser = messageData.user;
+      
+      return messageDiv;
+    }
+
+    // Listen for new messages
+    db.ref("messages").on("child_added", function(snapshot) {
+      const messageData = snapshot.val();
+      const messageId = snapshot.key;
+      
+      // Ensure message has required fields
+      if (!messageData.user) messageData.user = 'Unknown';
+      if (!messageData.timestamp) messageData.timestamp = Date.now();
+      
+      const messageElement = createMessageElement(messageData, messageId);
+      document.getElementById("chat").appendChild(messageElement);
+      
+      // Scroll to bottom
+      const chatContainer = document.getElementById("chat");
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    });
+
+    // Handle input changes for send button state
+    document.getElementById("msg").addEventListener("input", function() {
+      const sendBtn = document.getElementById("sendBtn");
+      sendBtn.disabled = this.value.trim() === "";
+    });
+
+    // Initialize send button state
+    document.getElementById("sendBtn").disabled = true;
   </script>
 </body>
 </html>
