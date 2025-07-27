@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Private Chat</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background: #f0f0f0;
+      padding: 20px;
+    }
+    #chat {
+      width: 80%;
+      max-width: 600px;
+      height: 300px;
+      margin: auto;
+      overflow-y: scroll;
+      border: 1px solid #ccc;
+      background: white;
+      padding: 10px;
+      text-align: left;
+    }
+    input {
+      width: 60%;
+      padding: 10px;
+      margin-top: 10px;
+    }
+    button {
+      padding: 10px 20px;
+      margin-left: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Private Chat 💬</h2>
+  <div id="chat"></div>
+  <input type="text" id="msg" placeholder="Type a message">
+  <button onclick="send()">Send</button>
+
+  <!-- Firebase Scripts -->
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+
+  <script>
+    // ✅ Your Firebase Config
+    const firebaseConfig = {
+      apiKey: "AIzaSyAyo4u6FZfDlxKRqW-OFQ3uAzXOnkwAWxY",
+      authDomain: "private-c6ca2.firebaseapp.com",
+      databaseURL: "https://private-c6ca2-default-rtdb.firebaseio.com",
+      projectId: "private-c6ca2",
+      storageBucket: "private-c6ca2.firebasestorage.app",
+      messagingSenderId: "746132871410",
+      appId: "1:746132871410:web:f5394eba6a084b2df7d86b"
+    };
+
+    // ✅ Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // ✅ Send message
+    function send() {
+      const msg = document.getElementById("msg").value.trim();
+      if (msg) {
+        db.ref("messages").push({ text: msg });
+        document.getElementById("msg").value = "";
+      }
+    }
+
+    // ✅ Receive messages in real-time
+    db.ref("messages").on("child_added", function(snapshot) {
+      const msg = snapshot.val().text;
+      const p = document.createElement("p");
+      p.textContent = msg;
+      document.getElementById("chat").appendChild(p);
+      document.getElementById("chat").scrollTop = document.getElementById("chat").scrollHeight;
+    });
+  </script>
+</body>
+</html>
