@@ -173,7 +173,8 @@
       display: flex;
       align-items: center;
       width: 100%;
-      transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      transition: transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      touch-action: pan-x;
     }
 
     .message.own .message-wrapper {
@@ -264,6 +265,30 @@
 
     .message.own .reply-indicator {
       background: rgba(255, 255, 255, 0.1);
+    }
+
+    .swipe-reply-icon {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 20px;
+      color: #25d366;
+      opacity: 0;
+      transition: all 0.3s ease;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .message.own .swipe-reply-icon {
+      left: -40px;
+    }
+
+    .message.other .swipe-reply-icon {
+      right: -40px;
+    }
+
+    .message.swiping .swipe-reply-icon {
+      opacity: 1;
     }
 
     .swipe-actions {
@@ -730,12 +755,16 @@
     let typingTimeout = null;
     let isTyping = false;
 
-    // Touch handling variables
+    // Enhanced touch handling variables
     let touchStartX = 0;
     let touchStartY = 0;
+    let touchStartTime = 0;
     let currentSwipeElement = null;
-    let swipeThreshold = 60;
+    let swipeThreshold = 50;
     let isVerticalScroll = false;
+    let isDragging = false;
+    let swipeDirection = null;
+    let initialTransform = 0;
 
     // Set current user
     function setUser(user) {
@@ -819,6 +848,11 @@
       replyPreview.classList.add("show");
       
       document.getElementById("msg").focus();
+      
+      // Add haptic feedback if available
+      if (navigator.vibrate) {
+        navigator.vibrate(50);
+      }
     }
 
     // Close reply
@@ -913,6 +947,7 @@
       messageDiv.innerHTML = `
         ${replyHtml}
         <div class="message-wrapper">
+          <div class="swipe-reply-icon">↩️</div>
           <div class="message-bubble">
             <div class="message-content">${messageData.text}</div>
             <div class="message-meta">
@@ -931,71 +966,108 @@
       messageDiv.dataset.messageUser = messageData.user;
       messageDiv.dataset.messageText = messageData.text;
       
-      // Add touch event listeners for swipe actions
-      addSwipeListeners(messageDiv);
+      // Add enhanced touch event listeners for swipe actions
+      addEnhancedSwipeListeners(messageDiv);
       
       return messageDiv;
     }
 
-    // Add swipe listeners to message
-    function addSwipeListeners(messageElement) {
+    // Enhanced swipe listeners with better mobile support
+    function addEnhancedSwipeListeners(messageElement) {
       const messageWrapper = messageElement.querySelector('.message-wrapper');
       
+      // Touch events for mobile
       messageWrapper.addEventListener('touchstart', handleTouchStart, { passive: false });
       messageWrapper.addEventListener('touchmove', handleTouchMove, { passive: false });
       messageWrapper.addEventListener('touchend', handleTouchEnd, { passive: false });
       
-      // Also add click listener for desktop
-      messageWrapper.addEventListener('click', function(e) {
-        if (window.innerWidth > 768) {
+      // Mouse events for desktop fallback
+      messageWrapper.addEventListener('mousedown', handleMouseDown);
+      messageWrapper.addEventListener('mousemove', handleMouseMove);
+      messageWrapper.addEventListener('mouseup', handleMouseUp);
+      messageWrapper.addEventListener('mouseleave', handleMouseUp);
+      
+      // Double tap for quick reply on mobile
+      let lastTouchTime = 0;
+      messageWrapper.addEventListener('touchend', function(e) {
+        const currentTime = new Date().getTime();
+        const tapLength = currentTime - lastTouchTime;
+        if (tapLength < 300 && tapLength > 0 && !isDragging) {
+          e.preventDefault();
           const messageId = messageElement.dataset.messageId;
           const messageText = messageElement.dataset.messageText;
           const messageUser = messageElement.dataset.messageUser;
           replyToMessage(messageId, messageText, messageUser);
         }
+        lastTouchTime = currentTime;
       });
     }
 
-    // Touch start handler
+    // Enhanced touch start handler
     function handleTouchStart(e) {
-      touchStartX = e.touches[0].clientX;
-      touchStartY = e.touches[0].clientY;
+      if (e.touches.length > 1) return; // Ignore multi-touch
+      
+      const touch = e.touches[0];
+      touchStartX = touch.clientX;
+      touchStartY = touch.clientY;
+      touchStartTime = Date.now();
       currentSwipeElement = e.currentTarget.parentElement;
       isVerticalScroll = false;
+      isDragging = false;
+      swipeDirection = null;
+      initialTransform = 0;
+      
+      // Prevent text selection
+      e.preventDefault();
     }
 
-    // Touch move handler
+    // Enhanced touch move handler
     function handleTouchMove(e) {
-      if (!currentSwipeElement) return;
+      if (!currentSwipeElement || e.touches.length > 1) return;
       
-      const touchX = e.touches[0].clientX;
-      const touchY = e.touches[0].clientY;
-      const deltaX = touchX - touchStartX;
-      const deltaY = touchY - touchStartY;
+      const touch = e.touches[0];
+      const deltaX = touch.clientX - touchStartX;
+      const deltaY = touch.clientY - touchStartY;
+      const absDeltaX = Math.abs(deltaX);
+      const absDeltaY = Math.abs(deltaY);
       
-      // Check if it's a vertical scroll
-      if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
+      // Determine if this is a vertical scroll
+      if (!isDragging && absDeltaY > absDeltaX && absDeltaY > 10) {
         isVerticalScroll = true;
         resetSwipe();
         return;
       }
       
-      if (isVerticalScroll) return;
-      
-      // Prevent default only for horizontal swipes
-      if (Math.abs(deltaX) > 10) {
+      // Start horizontal swipe if moved enough horizontally
+      if (!isDragging && !isVerticalScroll && absDeltaX > 10) {
+        isDragging = true;
+        // Prevent page scrolling during swipe
         e.preventDefault();
       }
       
-      const isOwnMessage = currentSwipeElement.classList.contains('own');
-      const swipeDirection = isOwnMessage ? -deltaX : deltaX;
-      
-      if (swipeDirection > 0 && swipeDirection < 120) {
-        const wrapper = currentSwipeElement.querySelector('.message-wrapper');
-        const transform = isOwnMessage ? `translateX(-${swipeDirection}px)` : `translateX(${swipeDirection}px)`;
-        wrapper.style.transform = transform;
+      if (isDragging && !isVerticalScroll) {
+        e.preventDefault();
         
-        if (swipeDirection > swipeThreshold) {
+        const isOwnMessage = currentSwipeElement.classList.contains('own');
+        const maxSwipe = 80;
+        let swipeDistance = 0;
+        
+        // Calculate swipe distance based on message type
+        if (isOwnMessage) {
+          // Own messages: swipe left to reveal actions on the left
+          swipeDistance = Math.max(-maxSwipe, Math.min(0, deltaX));
+          swipeDirection = deltaX < 0 ? 'left' : null;
+        } else {
+          // Other messages: swipe right to reveal actions on the right
+          swipeDistance = Math.min(maxSwipe, Math.max(0, deltaX));
+          swipeDirection = deltaX > 0 ? 'right' : null;
+        }
+        
+        const wrapper = currentSwipeElement.querySelector('.message-wrapper');
+        wrapper.style.transform = `translateX(${swipeDistance}px)`;
+        
+        // Show reply icon when swiping enough
+        if (Math.abs(swipeDistance) > swipeThreshold * 0.6) {
           currentSwipeElement.classList.add('swiping');
         } else {
           currentSwipeElement.classList.remove('swiping');
@@ -1003,36 +1075,139 @@
       }
     }
 
-    // Touch end handler
+    // Enhanced touch end handler
     function handleTouchEnd(e) {
-      if (!currentSwipeElement || isVerticalScroll) {
-        resetSwipe();
-        return;
-      }
+      if (!currentSwipeElement) return;
       
-      const touchX = e.changedTouches[0].clientX;
-      const deltaX = touchX - touchStartX;
-      const isOwnMessage = currentSwipeElement.classList.contains('own');
-      const swipeDirection = isOwnMessage ? -deltaX : deltaX;
+      const touchEndTime = Date.now();
+      const touchDuration = touchEndTime - touchStartTime;
       
-      if (swipeDirection > swipeThreshold) {
-        // Add haptic feedback if available
-        if (navigator.vibrate) {
-          navigator.vibrate(50);
+      if (isDragging && !isVerticalScroll) {
+        const touch = e.changedTouches[0];
+        const deltaX = touch.clientX - touchStartX;
+        const absDeltaX = Math.abs(deltaX);
+        const isOwnMessage = currentSwipeElement.classList.contains('own');
+        
+        // Check if swipe distance is enough to trigger reply
+        let shouldReply = false;
+        
+        if (isOwnMessage && deltaX < -swipeThreshold) {
+          shouldReply = true;
+        } else if (!isOwnMessage && deltaX > swipeThreshold) {
+          shouldReply = true;
+        }
+        
+        if (shouldReply) {
+          // Trigger reply action
+          const messageId = currentSwipeElement.dataset.messageId;
+          const messageText = currentSwipeElement.dataset.messageText;
+          const messageUser = currentSwipeElement.dataset.messageUser;
+          
+          // Add haptic feedback
+          if (navigator.vibrate) {
+            navigator.vibrate([50, 50, 50]);
+          }
+          
+          replyToMessage(messageId, messageText, messageUser);
         }
       }
       
       resetSwipe();
     }
 
-    // Reset swipe state
+    // Mouse handlers for desktop support
+    function handleMouseDown(e) {
+      if (window.innerWidth <= 768) return; // Only for desktop
+      
+      touchStartX = e.clientX;
+      touchStartY = e.clientY;
+      currentSwipeElement = e.currentTarget.parentElement;
+      isDragging = false;
+      
+      e.preventDefault();
+    }
+
+    function handleMouseMove(e) {
+      if (!currentSwipeElement || window.innerWidth <= 768) return;
+      
+      const deltaX = e.clientX - touchStartX;
+      const deltaY = e.clientY - touchStartY;
+      
+      if (!isDragging && Math.abs(deltaX) > 10) {
+        isDragging = true;
+      }
+      
+      if (isDragging) {
+        const isOwnMessage = currentSwipeElement.classList.contains('own');
+        const maxSwipe = 60;
+        let swipeDistance = 0;
+        
+        if (isOwnMessage) {
+          swipeDistance = Math.max(-maxSwipe, Math.min(0, deltaX));
+        } else {
+          swipeDistance = Math.min(maxSwipe, Math.max(0, deltaX));
+        }
+        
+        const wrapper = currentSwipeElement.querySelector('.message-wrapper');
+        wrapper.style.transform = `translateX(${swipeDistance}px)`;
+        
+        if (Math.abs(swipeDistance) > swipeThreshold * 0.6) {
+          currentSwipeElement.classList.add('swiping');
+        } else {
+          currentSwipeElement.classList.remove('swiping');
+        }
+      }
+    }
+
+    function handleMouseUp(e) {
+      if (!currentSwipeElement || window.innerWidth <= 768) return;
+      
+      if (isDragging) {
+        const deltaX = e.clientX - touchStartX;
+        const isOwnMessage = currentSwipeElement.classList.contains('own');
+        
+        let shouldReply = false;
+        
+        if (isOwnMessage && deltaX < -swipeThreshold) {
+          shouldReply = true;
+        } else if (!isOwnMessage && deltaX > swipeThreshold) {
+          shouldReply = true;
+        }
+        
+        if (shouldReply) {
+          const messageId = currentSwipeElement.dataset.messageId;
+          const messageText = currentSwipeElement.dataset.messageText;
+          const messageUser = currentSwipeElement.dataset.messageUser;
+          replyToMessage(messageId, messageText, messageUser);
+        }
+      }
+      
+      resetSwipe();
+    }
+
+    // Reset swipe state with smooth animation
     function resetSwipe() {
       if (currentSwipeElement) {
         const wrapper = currentSwipeElement.querySelector('.message-wrapper');
         wrapper.style.transform = '';
+        wrapper.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+        
+        setTimeout(() => {
+          if (wrapper) {
+            wrapper.style.transition = '';
+          }
+        }, 300);
+        
         currentSwipeElement.classList.remove('swiping');
         currentSwipeElement = null;
       }
+      
+      touchStartX = 0;
+      touchStartY = 0;
+      touchStartTime = 0;
+      isDragging = false;
+      isVerticalScroll = false;
+      swipeDirection = null;
     }
 
     // Update send button state
@@ -1042,20 +1217,19 @@
       sendBtn.disabled = msgInput.value.trim() === "";
     }
 
-    // Scroll to bottom
+    // Scroll to bottom with better performance
     function scrollToBottom() {
-      setTimeout(() => {
+      requestAnimationFrame(() => {
         const chatContainer = document.getElementById("chat");
         chatContainer.scrollTo({
           top: chatContainer.scrollHeight,
           behavior: 'smooth'
         });
-      }, 100);
+      });
     }
 
     // Toggle theme (placeholder function)
     function toggleTheme() {
-      // This can be expanded to switch between light and dark themes
       console.log('Theme toggle clicked');
     }
 
@@ -1122,8 +1296,13 @@
       }
     });
 
-    // Handle input changes
-    document.getElementById("msg").addEventListener("input", updateSendButton);
+    // Handle input changes with auto-resize
+    const msgInput = document.getElementById("msg");
+    msgInput.addEventListener("input", function() {
+      this.style.height = 'auto';
+      this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+      updateSendButton();
+    });
 
     // Close modals when clicking outside
     document.addEventListener('click', function(e) {
@@ -1135,53 +1314,6 @@
         }
       }
     });
-
-    // Initialize
-    updateSendButton();
-
-    // Handle window resize for responsive adjustments
-    window.addEventListener('resize', function() {
-      resetSwipe();
-    });
-
-    // Prevent zoom on double tap for iOS
-    let lastTouchEnd = 0;
-    document.addEventListener('touchend', function (event) {
-      const now = (new Date()).getTime();
-      if (now - lastTouchEnd <= 300) {
-        event.preventDefault();
-      }
-      lastTouchEnd = now;
-    }, false);
-
-    // Handle viewport height changes (mobile keyboard)
-    function handleViewportChange() {
-      const vh = window.innerHeight * 0.01;
-      document.documentElement.style.setProperty('--vh', `${vh}px`);
-    }
-
-    window.addEventListener('resize', handleViewportChange);
-    handleViewportChange();
-
-    // Auto-resize textarea
-    const msgInput = document.getElementById('msg');
-    msgInput.addEventListener('input', function() {
-      this.style.height = 'auto';
-      this.style.height = Math.min(this.scrollHeight, 120) + 'px';
-      updateSendButton();
-    });
-
-    // Emoji support (you can expand this)
-    function insertEmoji(emoji) {
-      const msgInput = document.getElementById('msg');
-      const cursorPos = msgInput.selectionStart;
-      const textBefore = msgInput.value.substring(0, cursorPos);
-      const textAfter = msgInput.value.substring(cursorPos);
-      msgInput.value = textBefore + emoji + textAfter;
-      msgInput.selectionStart = msgInput.selectionEnd = cursorPos + emoji.length;
-      msgInput.focus();
-      updateSendButton();
-    }
 
     // Keyboard shortcuts
     document.addEventListener('keydown', function(e) {
@@ -1203,22 +1335,47 @@
       }
     });
 
-    // Service Worker for offline support (optional enhancement)
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', function() {
-        // You can register a service worker here for offline support
-        console.log('Service Worker support detected');
-      });
+    // Handle window resize and orientation changes
+    window.addEventListener('resize', function() {
+      resetSwipe();
+    });
+
+    window.addEventListener('orientationchange', function() {
+      setTimeout(() => {
+        resetSwipe();
+        scrollToBottom();
+      }, 500);
+    });
+
+    // Prevent zoom on double tap for iOS
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', function (event) {
+      const now = (new Date()).getTime();
+      if (now - lastTouchEnd <= 300) {
+        event.preventDefault();
+      }
+      lastTouchEnd = now;
+    }, false);
+
+    // Handle viewport height changes (mobile keyboard)
+    function handleViewportChange() {
+      const vh = window.innerHeight * 0.01;
+      document.documentElement.style.setProperty('--vh', `${vh}px`);
     }
 
-    // Add some fun animations for message reactions (placeholder)
-    function addReaction(messageId, reaction) {
-      // This can be expanded to add emoji reactions to messages
-      console.log(`Adding reaction ${reaction} to message ${messageId}`);
-    }
+    window.addEventListener('resize', handleViewportChange);
+    handleViewportChange();
+
+    // Improved touch handling for better performance
+    document.addEventListener('touchmove', function(e) {
+      if (isDragging) {
+        e.preventDefault();
+      }
+    }, { passive: false });
 
     // Initialize app
-    console.log('WhatsApp-style chat initialized');
+    updateSendButton();
+    console.log('WhatsApp-style chat with enhanced mobile reply functionality initialized');
   </script>
 </body>
 </html>
